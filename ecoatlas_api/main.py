@@ -58,8 +58,12 @@ app.add_middleware(
 # et y accéder via /static/images/xxx.jpg
 # Chemin absolu vers ecoatlas_api/static
 STATIC_DIR = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+else:
+    # On ne bloque pas le démarrage si le dossier n'existe pas
+    print(f"[WARN] Static directory not found: {STATIC_DIR}. Skipping static mount.")
 
 # ---------------------------------------------------------
 # Inclusion des routers
