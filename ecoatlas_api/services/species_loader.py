@@ -1,17 +1,11 @@
 # ecoatlas_api/services/species_loader.py
-"""
-Species Loader – PRO VERSION
-Charge les 500 espèces + occurrences.
-"""
 
 import json
 import random
 from pathlib import Path
-from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
 from .. import models
-
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "species_base.json"
 
@@ -24,10 +18,9 @@ def random_years(seed: str):
 
 
 def reload_species_database() -> int:
-    """Reset + Reload 500 species."""
     db = SessionLocal()
 
-    # wipe
+    # wipe tables
     db.query(models.Occurrence).delete()
     db.query(models.Species).delete()
     db.commit()
