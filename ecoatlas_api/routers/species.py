@@ -84,3 +84,25 @@ def get_species_detail(
             detail=f"Espèce avec id={species_id} introuvable.",
         )
     return species
+
+
+@router.get(
+    "/{species_id}/bio",
+    response_model=schemas.SpeciesBioOut,
+    summary="Bio enrichie d'une espèce",
+    description="Combine les données EcoAtlas en base avec Wikidata/Wikimedia.",
+)
+def get_species_bio(
+    species_id: int,
+    db: Session = Depends(get_db),
+):
+    species = crud.get_species_by_id(db, species_id=species_id)
+    if not species:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Espèce avec id={species_id} introuvable.",
+        )
+
+    from ..bio_service import build_species_bio
+
+    return build_species_bio(db, species)

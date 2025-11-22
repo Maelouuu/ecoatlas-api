@@ -85,6 +85,32 @@ class SpeciesDetail(SpeciesBase):
 
 
 # -------------------------------------------------------------------
+# Bio enrichie d'une espèce (données externes)
+# -------------------------------------------------------------------
+class SpeciesBioOut(BaseModel):
+    id: int
+    common_name: Optional[str] = None
+    scientific_name: Optional[str] = None
+
+    life_zone: Optional[str] = None
+    biome: Optional[str] = None
+
+    population: Optional[float] = None
+    size_adult_cm: Optional[float] = None
+    weight_adult_kg: Optional[float] = None
+
+    # Champs issus majoritairement de Wikidata / Wikimedia
+    diet: Optional[str] = None
+    lifespan_years: Optional[float] = None
+    habitat: Optional[str] = None
+    range_description: Optional[str] = None
+    iucn_status: Optional[str] = None
+    speed_kmh: Optional[float] = None
+
+    photo_url: Optional[str] = None
+
+
+# -------------------------------------------------------------------
 # Modèles pour la recherche et les filtres
 # -------------------------------------------------------------------
 class SpeciesSearchFilters(BaseModel):
