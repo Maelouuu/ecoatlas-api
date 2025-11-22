@@ -1,29 +1,27 @@
 # ecoatlas_api/migrate_sqlite_to_postgres.py
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, Species, Occurrence, Source
+# Si tu ajoutes d'autres modèles plus tard, tu pourras les importer ici
 
-# Base locale SQLite (celle que tu as déjà remplie avec gbif_importer)
+# SQLite local (déjà rempli par gbif_importer)
 SQLITE_URL = "sqlite:///./ecoatlas.db"
 
-# Base distante Render (External Database URL)
+# Base distante (External Database URL Render)
 PG_URL = os.getenv("DATABASE_URL")
 if not PG_URL:
-    raise RuntimeError(
-        "Tu dois définir la variable d'environnement DATABASE_URL avec l'External Database URL de Render."
-    )
+    raise RuntimeError("DATABASE_URL n'est pas défini.")
 
-# Render donne souvent une URL en postgres://, SQLAlchemy préfère postgresql://
+# Render donne souvent du postgres://, SQLAlchemy préfère postgresql://
 if PG_URL.startswith("postgres://"):
     PG_URL = PG_URL.replace("postgres://", "postgresql://", 1)
 
-print(f"[INFO] SQLite source = {SQLITE_URL}")
-print(f"[INFO] Postgres cible = {PG_URL}")
+print("[INFO] SQLite = ", SQLITE_URL)
+print("[INFO] Postgres = ", PG_URL)
 
-# Engines
 sqlite_engine = create_engine(
     SQLITE_URL,
     connect_args={"check_same_thread": False},
@@ -31,11 +29,29 @@ sqlite_engine = create_engine(
 )
 pg_engine = create_engine(PG_URL, future=True)
 
-SqliteSession = sessionmaker(bind=sqlite_engine, autoflush=False, autocommit=False)
-PgSession = sessionmaker(bind=pg_engine, autoflush=False, autocommit=False)
+SqliteSession = sessionmaker(bind=sqlite_engine)
+PgSession = sessionmaker(bind=pg_engine)
+
+
+def copy_table(src_session, dst_session, model):
+    """Copie générique d'une table SQLAlchemy par introspection."""
+    insp = inspect(model)
+    columns = [c.key for c in insp.columns]
+
+    rows = src_session.query(model).all()
+    print(f"  -> {model.__tablename__}: {len(rows)} lignes")
+
+    for row in rows:
+        data = {}
+        for col in columns:
+            data[col] = getattr(row, col)
+        # merge = upsert (insert ou update si déjà présent)
+        dst_session.merge(model(**data))
+
+    dst_session.commit()
+
 
 def main():
-    # Création des tables dans Postgres si besoin
     print("[STEP] Création des tables dans Postgres…")
     Base.metadata.create_all(pg_engine)
 
@@ -43,60 +59,15 @@ def main():
     dst = PgSession()
 
     try:
-        # --- SOURCES ---
-        print("[STEP] Copie des sources…")
-        sources = src.query(Source).all()
-        for s in sources:
-            dst.merge(
-                Source(
-                    id=s.id,
-                    name=s.name,
-                    url=s.url,
-                )
-            )
-        dst.commit()
-        print(f"[OK] {len(sources)} sources copiées.")
-
-        # --- SPECIES ---
+        # IMPORTANT : respecter l'ordre des dépendances FK
         print("[STEP] Copie des espèces…")
-        species_list = src.query(Species).all()
-        for sp in species_list:
-            dst.merge(
-                Species(
-                    id=sp.id,
-                    common_name=sp.common_name,
-                    scientific_name=sp.scientific_name,
-                    life_zone=sp.life_zone,
-                    biome=sp.biome,
-                    population=sp.population,
-                    size_newborn_cm=sp.size_newborn_cm,
-                    size_adult_cm=sp.size_adult_cm,
-                    weight_newborn_kg=sp.weight_newborn_kg,
-                    weight_adult_kg=sp.weight_adult_kg,
-                    photo_url=sp.photo_url,
-                    photo_key=sp.photo_key,
-                )
-            )
-        dst.commit()
-        print(f"[OK] {len(species_list)} espèces copiées.")
+        copy_table(src, dst, Species)
 
-        # --- OCCURRENCES ---
         print("[STEP] Copie des occurrences…")
-        occs = src.query(Occurrence).all()
-        for o in occs:
-            dst.merge(
-                Occurrence(
-                    id=o.id,
-                    species_id=o.species_id,
-                    lat=o.lat,
-                    lng=o.lng,
-                    start_year=o.start_year,
-                    end_year=o.end_year,
-                    source_id=o.source_id,
-                )
-            )
-        dst.commit()
-        print(f"[OK] {len(occs)} occurrences copiées.")
+        copy_table(src, dst, Occurrence)
+
+        print("[STEP] Copie des sources…")
+        copy_table(src, dst, Source)
 
         print("🎉 Migration terminée avec succès !")
 

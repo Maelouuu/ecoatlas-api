@@ -7,7 +7,8 @@ from pathlib import Path
 
 from .database import Base, engine
 from . import models
-from .routers import species, occurrences, search
+from .routers import species, occurrences, search, admin
+
 
 # ---------------------------------------------------------
 # Création des tables (si elles n'existent pas)
@@ -71,6 +72,7 @@ else:
 app.include_router(species.router)
 app.include_router(occurrences.router)
 app.include_router(search.router)
+app.include_router(admin.router)
 
 
 # ---------------------------------------------------------
