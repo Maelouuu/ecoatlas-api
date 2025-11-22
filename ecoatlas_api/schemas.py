@@ -1,15 +1,16 @@
-# schemas.py
-from datetime import datetime
-from typing import List, Optional
+# ecoatlas_api/schemas.py
+"""
+Pydantic schemas – final version
+Used for clean API responses.
+"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
 
-# -------------------------------------------------------------------
-# Occurrences (points sur le globe)
-# -------------------------------------------------------------------
-class OccurrenceOut(BaseModel):
-    id: int
+# OCCURRENCE -----------------------------------------
+
+class OccurrenceBase(BaseModel):
     lat: float
     lng: float
     start_year: Optional[int] = None
@@ -17,121 +18,72 @@ class OccurrenceOut(BaseModel):
     source: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-# -------------------------------------------------------------------
-# Sources (comparateur de données)
-# -------------------------------------------------------------------
-class SourceOut(BaseModel):
+class OccurrenceOut(OccurrenceBase):
     id: int
-    source_name: str
-    field_name: str
-    value_raw: Optional[str] = None
-    value_numeric: Optional[float] = None
-    last_check_date: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-# -------------------------------------------------------------------
-# Species (base commune)
-# -------------------------------------------------------------------
+# SPECIES --------------------------------------------
+
 class SpeciesBase(BaseModel):
+    id: int
     common_name: Optional[str] = None
-    scientific_name: str
+    scientific_name: Optional[str] = None
     life_zone: Optional[str] = None
     biome: Optional[str] = None
-    population: Optional[float] = None
-    size_newborn_cm: Optional[float] = None
-    size_adult_cm: Optional[float] = None
-    weight_newborn_kg: Optional[float] = None
-    weight_adult_kg: Optional[float] = None
-    photo_url: Optional[str] = None
-    photo_key: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class SpeciesSummary(SpeciesBase):
-    """
-    Version 'liste' utilisée pour l'écran principal :
-    /species?year=...&life_zone=...
-    """
-
-    id: int
-    occurrences: List[OccurrenceOut] = []
+    photo_url: Optional[str] = None
 
     class Config:
-        orm_mode = True
-
+        from_attributes = True
 
 
 class SpeciesDetail(SpeciesBase):
-    """
-    Version détaillée pour la fiche d'une espèce :
-    inclut les occurrences et les sources.
-    """
+    population: Optional[int] = None
+    size_adult_cm: Optional[float] = None
+    weight_adult_kg: Optional[float] = None
+    diet: Optional[str] = None
+    lifespan_years: Optional[float] = None
+    iucn_status: Optional[str] = None
+    habitat: Optional[str] = None
+    speed_kmh: Optional[float] = None
+    range_description: Optional[str] = None
 
-    id: int
-    gbif_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    photo_url: Optional[str] = None
 
     occurrences: List[OccurrenceOut] = []
-    sources: List[SourceOut] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-# -------------------------------------------------------------------
-# Bio enrichie d'une espèce (données externes)
-# -------------------------------------------------------------------
-class SpeciesBioOut(BaseModel):
+# BIO ENRICHIE (API /bio) ----------------------------
+
+class SpeciesBio(BaseModel):
     id: int
     common_name: Optional[str] = None
     scientific_name: Optional[str] = None
 
-    life_zone: Optional[str] = None
-    biome: Optional[str] = None
-
-    population: Optional[float] = None
-    size_adult_cm: Optional[float] = None
-    weight_adult_kg: Optional[float] = None
-
-    # Champs issus majoritairement de Wikidata / Wikimedia
     diet: Optional[str] = None
     lifespan_years: Optional[float] = None
     habitat: Optional[str] = None
-    range_description: Optional[str] = None
-    iucn_status: Optional[str] = None
     speed_kmh: Optional[float] = None
+    iucn_status: Optional[str] = None
+    size_adult_cm: Optional[float] = None
+    weight_adult_kg: Optional[float] = None
+    range_description: Optional[str] = None
 
     photo_url: Optional[str] = None
 
-
-# -------------------------------------------------------------------
-# Modèles pour la recherche et les filtres
-# -------------------------------------------------------------------
-class SpeciesSearchFilters(BaseModel):
-    """
-    Modèle facultatif si tu veux documenter les filtres côté Swagger.
-    Tu pourras aussi directement utiliser les query params.
-    """
-
-    year: Optional[int] = None
-    life_zone: Optional[str] = None
-    biome: Optional[str] = None
-    search: Optional[str] = None
-    limit: int = 50
-    offset: int = 0
-
-
-# Si plus tard tu veux créer/modifier des espèces
-# via l'API d'admin, tu pourras définir :
-#
-# class SpeciesCreate(SpeciesBase):
-#     gbif_id: Optional[int] = None
-#
-# class SpeciesUpdate(BaseModel):
-#     ... (tous les champs optionnels)
+    class Config:
+        from_attributes = True

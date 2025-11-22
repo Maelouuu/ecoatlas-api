@@ -1,30 +1,49 @@
-# database.py
+# ecoatlas_api/database.py
+"""
+Database engine & session – PRO version
+Compatible PostgreSQL (Render) + local SQLite fallback.
+"""
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# -------------------------------------------------------------------
-# Choix de la base de données
-# -------------------------------------------------------------------
-# En développement : SQLite locale
-# En production (Render) : tu définiras la variable d'env DATABASE_URL
-# vers une base PostgreSQL (par ex. : postgresql+psycopg2://user:pwd@host/db)
-# -------------------------------------------------------------------
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ecoatlas.db")
+# Render PostgreSQL fix
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# If no env provided → SQLite local
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./ecoatlas.db"
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, echo=False, future=True, connect_args=connect_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Engine
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    connect_args={"check_same_thread": False}
+    if DATABASE_URL.startswith("sqlite")
+    else {},
+)
+
+# ORM session factory
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
+# Base class
 Base = declarative_base()
+
 
 def get_db():
     """
-    Dépendance FastAPI : fournit une session de DB
-    et la ferme automatiquement après la requête.
+    Dependency used in routers.
+    Yields a clean database session.
     """
     db = SessionLocal()
     try:

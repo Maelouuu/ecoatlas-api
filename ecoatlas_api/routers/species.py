@@ -1,11 +1,17 @@
-# routers/species.py
+# ecoatlas_api/routers/species.py
+"""
+Species Router – PRO VERSION
+Espèces + détails + bio externe Wikidata + images.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-
-from .. import crud, schemas
 from ..database import get_db
+from .. import crud, schemas, models
+from ..services.wikidata_service import fetch_wikidata
+from ..services.wikimedia_service import wikimedia_image_url
 
 router = APIRouter(
     prefix="/species",
@@ -13,43 +19,22 @@ router = APIRouter(
 )
 
 
+# ---------------------------------------------------------
+# LIST
+# ---------------------------------------------------------
+
 @router.get(
     "",
     response_model=List[schemas.SpeciesSummary],
-    summary="Lister les espèces",
-    description=(
-        "Retourne une liste d'espèces, filtrable par année, life_zone, biome et texte de recherche. "
-        "Utilisée pour alimenter le globe et les listes dans l'app."
-    ),
+    summary="Lister les espèces (pro)",
 )
 def list_species(
-    year: Optional[int] = Query(
-        None,
-        description="Année de référence pour filtrer les espèces en fonction de leurs occurrences.",
-    ),
-    life_zone: Optional[str] = Query(
-        None,
-        description="Zone de vie : 'marin', 'terrestre', 'volant', etc.",
-    ),
-    biome: Optional[str] = Query(
-        None,
-        description="Biome : forêt tropicale, désert, etc.",
-    ),
-    search: Optional[str] = Query(
-        None,
-        description="Texte recherché dans les noms communs / scientifiques.",
-    ),
-    limit: int = Query(
-        50,
-        ge=1,
-        le=200,
-        description="Nombre maximum d'espèces à retourner (pagination).",
-    ),
-    offset: int = Query(
-        0,
-        ge=0,
-        description="Décalage de départ pour la pagination.",
-    ),
+    year: Optional[int] = Query(None),
+    life_zone: Optional[str] = Query(None),
+    biome: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
     species = crud.get_species_list(
@@ -61,48 +46,88 @@ def list_species(
         limit=limit,
         offset=offset,
     )
+
     return species
 
+
+# ---------------------------------------------------------
+# DETAIL
+# ---------------------------------------------------------
 
 @router.get(
     "/{species_id}",
     response_model=schemas.SpeciesDetail,
-    summary="Détails d'une espèce",
-    description=(
-        "Renvoie la fiche détaillée d'une espèce, incluant ses occurrences et ses sources "
-        "(pour le comparateur de données)."
-    ),
+    summary="Détail complet d'une espèce",
 )
 def get_species_detail(
     species_id: int,
+    include: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    species = crud.get_species_by_id(db, species_id=species_id)
-    if not species:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Espèce avec id={species_id} introuvable.",
-        )
-    return species
+    sp = crud.get_species_by_id(db, species_id)
+    if not sp:
+        raise HTTPException(404, f"Espèce id={species_id} inconnue")
 
+    return sp
+
+
+# ---------------------------------------------------------
+# BIO WIKIDATA
+# ---------------------------------------------------------
 
 @router.get(
     "/{species_id}/bio",
-    response_model=schemas.SpeciesBioOut,
-    summary="Bio enrichie d'une espèce",
-    description="Combine les données EcoAtlas en base avec Wikidata/Wikimedia.",
+    response_model=schemas.SpeciesBio,
+    summary="Informations biologiques externes via Wikidata",
 )
-def get_species_bio(
-    species_id: int,
-    db: Session = Depends(get_db),
-):
-    species = crud.get_species_by_id(db, species_id=species_id)
-    if not species:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Espèce avec id={species_id} introuvable.",
-        )
+def get_species_bio(species_id: int, db: Session = Depends(get_db)):
+    sp = crud.get_species_by_id(db, species_id)
+    if not sp:
+        raise HTTPException(404, "Espèce inconnue")
 
-    from ..bio_service import build_species_bio
+    data = fetch_wikidata(sp.scientific_name)
+    if not data:
+        raise HTTPException(404, "Données Wikidata introuvables")
 
-    return build_species_bio(db, species)
+    # Convertir image
+    img_url = None
+    if data.get("image_filename"):
+        img_url = wikimedia_image_url(data["image_filename"])
+
+    return schemas.SpeciesBio(
+        id=sp.id,
+        common_name=sp.common_name,
+        scientific_name=sp.scientific_name,
+        diet=data.get("diet"),
+        lifespan_years=data.get("lifespan_years"),
+        habitat=data.get("habitat"),
+        speed_kmh=data.get("speed_kmh"),
+        iucn_status=data.get("iucn_status"),
+        size_adult_cm=data.get("size_adult_cm"),
+        weight_adult_kg=data.get("weight_adult_kg"),
+        range_description=data.get("range_description"),
+        photo_url=img_url,
+    )
+
+
+# ---------------------------------------------------------
+# IMAGES (alias simple)
+# ---------------------------------------------------------
+
+@router.get(
+    "/{species_id}/images",
+    summary="Récupère une image HD via Wikidata/Wikimedia",
+)
+def get_species_image(species_id: int, db: Session = Depends(get_db)):
+    sp = crud.get_species_by_id(db, species_id)
+    if not sp:
+        raise HTTPException(404)
+
+    data = fetch_wikidata(sp.scientific_name)
+    if not data:
+        return {"photo_url": None}
+
+    if not data.get("image_filename"):
+        return {"photo_url": None}
+
+    return {"photo_url": wikimedia_image_url(data["image_filename"])}

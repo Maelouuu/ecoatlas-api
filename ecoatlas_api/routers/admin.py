@@ -1,31 +1,23 @@
 # ecoatlas_api/routers/admin.py
-import os
-from fastapi import APIRouter, HTTPException
+"""
+Admin router – reload database (Render free workaround)
+"""
 
-from ..populate_service import populate_species_database
+from fastapi import APIRouter, HTTPException, Query
+from ..services.species_loader import reload_species_database
 
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
 )
 
-# Petit "secret" pour éviter que n'importe qui déclenche le remplissage
-SECRET_TOKEN = os.getenv("ECOATLAS_ADMIN_TOKEN", "DEV_INIT_TOKEN")
+SECRET = "DEV_INIT_TOKEN"  # change si tu veux
 
 
-@router.api_route("/populate_species", methods=["GET", "POST"])
-def admin_populate_species(token: str):
-    """
-    Route d'initialisation :
-    - vide toutes les espèces + occurrences
-    - insère les 500 espèces du JSON
-    À appeler UNE SEULE FOIS sur Render.
-    """
-    if token != SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid token")
+@router.post("/reload")
+async def reload_database(token: str = Query(...)):
+    if token != SECRET:
+        raise HTTPException(403, "Invalid token")
 
-    count = populate_species_database()
-    return {
-        "status": "ok",
-        "inserted_species": count,
-    }
+    count = reload_species_database()
+    return {"status": "ok", "inserted": count}
